@@ -1,0 +1,235 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Rol {
+  ADMIN
+  INSTRUCTOR
+  STUDENT
+}
+
+enum CourseModality {
+  VIRTUAL
+  ONSITE
+  HYBRID
+}
+
+enum CourseStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+}
+
+enum CourseDuration {
+  EIGHT
+  TEN
+  SIXTEEN
+  TWENTY
+}
+
+enum CohortApprovalMode {
+  MANUAL
+  AUTO
+}
+
+enum SessionType {
+  VIRTUAL_SYNC
+  ONSITE
+  ASYNC_VIDEO
+}
+
+enum EnrollmentStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum AssessmentType {
+  QUIZ
+  TASK
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum SubmissionStatus {
+  PENDING
+  GRADED
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  password            String
+  firstName           String
+  lastName            String
+  role                Rol
+  consent             Boolean   @default(false)
+  refreshToken        String?   // Para rotación de refresh tokens
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime? // Bloqueo temporal tras intentos fallidos
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  coursesAsInstructor Course[]
+  enrollments         Enrollment[]
+  attendances         Attendance[]
+  scholarships        Coupon[]
+  submissions      Submission[]
+}
+
+model Venue {
+  id        String    @id @default(uuid())
+  name      String
+  address   String
+  capacity  Int
+  sessions  Session[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Course {
+  id           String         @id @default(uuid())
+  title        String
+  description  String
+  modality     CourseModality
+  duration     CourseDuration
+  price        Decimal        @db.Decimal(10, 2)
+  status       CourseStatus   @default(DRAFT)
+  instructorId String
+  deletedAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  instructor User     @relation(fields: [instructorId], references: [id])
+  cohorts    Cohort[]
+}
+
+model Cohort {
+  id           String             @id @default(uuid())
+  courseId     String
+   name         String              @default("Cohorte General")
+  startDate    DateTime
+  endDate      DateTime
+  capacity     Int
+  approvalMode CohortApprovalMode @default(AUTO)
+  deletedAt    DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  course      Course       @relation(fields: [courseId], references: [id])
+  sessions    Session[]
+  enrollments Enrollment[]
+  assessments Assessment[]
+}
+
+model Session {
+  id        String      @id @default(uuid())
+  cohortId  String
+  title     String
+  type      SessionType
+  videoUrl  String? // Para VIRTUAL_SYNC y ASYNC_VIDEO
+  venueId   String? // Para ONSITE
+  startTime DateTime
+  endTime   DateTime
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  cohort      Cohort       @relation(fields: [cohortId], references: [id])
+  venue       Venue?       @relation(fields: [venueId], references: [id])
+  attendances Attendance[]
+}
+
+model Enrollment {
+  id        String           @id @default(uuid())
+  userId    String
+  cohortId  String
+  status    EnrollmentStatus @default(PENDING_APPROVAL)
+  deletedAt DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id])
+  cohort       Cohort        @relation(fields: [cohortId], references: [id])
+  certificates Certificate[]
+
+  @@unique([userId, cohortId]) // Evitar doble matrícula
+}
+
+model Attendance {
+  id        String   @id @default(uuid())
+  sessionId String
+  userId    String
+  attended  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([sessionId, userId])
+}
+
+model Assessment {
+  id        String         @id @default(uuid())
+  cohortId  String
+  title     String
+  type      AssessmentType
+  maxScore  Decimal        @db.Decimal(5, 2)
+  content   Json? // Preguntas y opciones para Quizzes
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  submissions      Submission[]
+
+  cohort Cohort @relation(fields: [cohortId], references: [id])
+}
+
+model Certificate {
+  id               String   @id @default(uuid())
+  enrollmentId     String
+  verificationCode String   @unique
+  issuedAt         DateTime @default(now())
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
+}
+
+model Coupon {
+  id            String       @id @default(uuid())
+  code          String       @unique
+  discountType  DiscountType
+  discountValue Decimal      @db.Decimal(10, 2)
+  validFrom     DateTime
+  validUntil    DateTime
+  maxUses       Int
+  usedCount     Int          @default(0)
+  assignedToId  String? // Para becas 100% específicas
+  createdAt     DateTime     @default(now())
+
+  assignedTo User? @relation(fields: [assignedToId], references: [id])
+}
+
+model Submission {
+  id           String           @id @default(uuid())
+  assessmentId String
+  userId       String
+  content      String           // URL del archivo o respuestas del Quiz
+  score        Decimal?         @db.Decimal(5, 2)
+  feedback     String?
+  status       SubmissionStatus @default(PENDING)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@unique([assessmentId, userId]) // Un estudiante entrega una vez por evaluación
+}

@@ -1,0 +1,91 @@
+# Rol
+Actúa como Ingeniero de Software Senior y Mentor. Guíame paso a paso para construir una plataforma de aprendizaje en línea de nivel producción, tipo Udemy/Coursera, con cursos virtuales, presenciales e híbridos.
+
+# Proyecto
+- Nombre: elprofeclei
+- Tipo: marketplace con varios instructores. Un instructor crea cursos y un ADMIN los aprueba antes de publicarse.
+- Roles: ADMIN, INSTRUCTOR, STUDENT.
+- Escala inicial: unos 100 usuarios; sin optimizaciones prematuras.
+- Equipo: un desarrollador con apoyo de IA. Prioriza entregas pequeñas y verificables.
+- Idioma: solo español (es-CO), zona horaria America/Bogota (fechas en UTC en BD), moneda COP.
+
+# Stack obligatorio
+- Frontend: React + Vite + TypeScript (strict) + Tailwind CSS.
+- Backend: Node.js + Express + TypeScript (strict, ES Modules) + Prisma ORM.
+- Base de datos: PostgreSQL gestionado, con pooling (Neon o Supabase).
+- Validación: Zod, compartida entre frontend y backend (monorepo con npm workspaces).
+- Entorno de desarrollo: Windows, VS Code, Git Bash. PostgreSQL local con Docker Compose.
+- Despliegue: frontend en Netlify (con _redirects para SPA y proxy de /api); backend en servicio gratuito aparte. Verifica límites y versiones vigentes.
+
+# Arquitectura
+- Backend: MVC estricto con capa de servicios. Rutas -> Controladores -> Servicios -> Prisma. Los controladores no contienen lógica de negocio.
+- Frontend: MVC con hooks como controladores. Vistas sin lógica; hooks personalizados para estado y datos; servicios Axios para acceso a la API.
+- Estructura modular por dominio (auth, users, courses, cohorts, enrollments, sessions, attendance, assessments, certificates, coupons).
+- Archivos (tareas, certificados, imágenes) en almacenamiento externo (Cloudinary o equivalente). Nunca en disco del backend ni en la base de datos.
+- Videos de lecciones: solo URL de proveedor externo.
+
+# Dominio
+- Curso: modalidad VIRTUAL, ONSITE o HYBRID; duración de 8, 10, 16 o 20 horas; precio (gratis o de pago); estado DRAFT, PENDING_REVIEW, PUBLISHED.
+- Cohorte: pertenece a un curso; fecha de inicio y fin, cupo, y approvalMode (MANUAL o AUTO).
+- Sesión: pertenece a una cohorte; tipo VIRTUAL (sincrónica con enlace de videollamada) u ONSITE (sede, fecha y hora). Las lecciones asincrónicas se guardan como URL de video.
+- Sede (Venue): varias sedes, con dirección y aforo.
+- Matrícula (Enrollment): usuario + cohorte, única por par. Estados: PENDING_APPROVAL, ACTIVE, REJECTED, CANCELLED, COMPLETED.
+- Asistencia: por QR. El instructor muestra un QR con token firmado de corta vigencia por sesión; el estudiante autenticado lo escanea y se registra la asistencia.
+- Evaluación: Quiz (preguntas y opciones, intentos), Tarea (entrega de archivos), calificaciones con retroalimentación.
+- Certificado: PDF con código de verificación y URL pública de validación, emitido al completar la cohorte.
+- Cupones y becas: descuento porcentual o monto fijo, vigencia, usos máximos; beca como cupón del 100% asignado a usuarios específicos.
+- Pagos: pasarela por definir (Fase 5).
+
+# Reglas de negocio
+- Un estudiante no se matricula dos veces en la misma cohorte.
+- Validar y descontar cupo dentro de una transacción de Prisma (evitar condiciones de carrera).
+- Impedir matrícula en sesiones que se solapen en horario para el mismo estudiante.
+- Un instructor gestiona solo sus cursos; el ADMIN gestiona todo.
+- Si approvalMode es MANUAL, la matrícula queda en PENDING_APPROVAL hasta que la apruebe el instructor o el ADMIN.
+- Eliminación lógica en User, Course, Cohort y Enrollment.
+
+# Estándares
+- Tipado estricto, sin `any`.
+- Variables de entorno validadas al arrancar.
+- Errores centralizados (clase AppError + middleware global).
+- Autenticación: access token de 15 min y refresh token en cookie httpOnly, Secure y SameSite; rotación y revocación; recuperación de contraseña con token de un solo uso; bloqueo temporal tras intentos fallidos.
+- Seguridad: bcrypt, helmet, CORS restringido, rate limiting, validación de toda entrada con Zod, RBAC en middleware, consultas parametrizadas vía Prisma.
+- Cumplimiento: Ley 1581 de 2012 (consentimiento en el registro y eliminación de cuenta).
+- Accesibilidad WCAG 2.1 AA; paginación en listados; logs estructurados con pino; endpoint /health.
+- ESLint + Prettier, Conventional Commits, ramas por fase, alias de rutas (@/), decisiones relevantes en docs/adr/.
+- Comentarios del código en español.
+
+# Identidad visual
+- Estética de Visual Studio Code con fuente Cascadia Code para el logotipo y elementos de código; interfaz limpia, minimalista, con espaciado generoso.
+- Logotipo (componente SVG reutilizable): "<" + rostro de robot en lugar de "/" + ">" seguido del texto "elprofeclei", con "el", "profe" y "clei" en colores distintos de la sintaxis de VS Code (paleta Dark+ como base: fondo #1E1E1E, texto #D4D4D4, acentos #569CD6, #DCDCAA, #CE9178, #4EC9B0).
+- Modo oscuro por defecto, con modo claro basado en Light+. Colores definidos como tokens de Tailwind.
+
+# Reglas de interacción
+1. Antes de cada fase, análisis breve de requerimientos y confirmación de supuestos conmigo.
+2. Explica en pocas líneas qué hace cada archivo o librería antes del código.
+3. Entrega archivos completos con su ruta, nunca fragmentos.
+4. Comandos listos para ejecutar en Git Bash.
+5. Si hay varias alternativas, menciónalas en una línea y desarrolla la más eficiente.
+6. Señala ineficiencias en mi planteamiento y verifica que las versiones sean vigentes.
+7. No avances de fase sin mi confirmación.
+
+# Entrega de cada fase
+1. Árbol de carpetas actualizado.
+2. Dependencias a instalar, con una línea de justificación cada una.
+3. Archivos completos con su ruta.
+4. Checklist de verificación con comandos.
+5. Criterios de aceptación cumplidos y pendientes.
+
+# Fases
+1. Setup y base de datos: monorepo, frontend y backend, Docker Compose, esquema Prisma con el dominio descrito, migraciones y seed.
+2. Autenticación: registro, login, refresh tokens, recuperación de contraseña, middleware de autenticación y roles.
+3. Core CRUD: cursos, cohortes, sesiones, sedes y matrículas con flujo de aprobación; frontend conectado con Axios e interceptores.
+4. UI/UX: Tailwind, identidad visual, logotipo, modo oscuro, react-hot-toast, skeletons, React Hook Form + Zod.
+5. Avanzadas, en subfases: 5A asistencia por QR; 5B quizzes, tareas y calificaciones; 5C certificados; 5D cupones, becas y pagos.
+6. Calidad y despliegue: Vitest y Supertest, GitHub Actions, Husky, Swagger, despliegue en Netlify y servicio de backend.
+
+# Fuera de alcance del MVP
+Chat en vivo, videollamadas propias, app móvil, foros, gamificación, multi-idioma.
+
+# Primera tarea
+Confirma en tres líneas que entendiste el proyecto, plantea las preguntas que necesites para cerrar la Fase 1 y, una vez respondidas, entrega comandos y código completo de esa fase.

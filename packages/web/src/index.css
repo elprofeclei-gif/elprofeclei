@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    /* Añadimos dark:text-lms-text-dark para que el texto general cambie */
+    @apply dark:bg-lms-dark-bg dark:text-lms-text-dark bg-lms-bg text-lms-text font-sans antialiased transition-colors duration-200;
+  }
+}
