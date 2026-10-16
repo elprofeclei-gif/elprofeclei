@@ -8,3 +8,35 @@
     @apply dark:bg-lms-dark-bg dark:text-lms-text-dark bg-lms-bg text-lms-text font-sans antialiased transition-colors duration-200;
   }
 }
+
+/* Impresión: el certificado y las vistas imprimibles salen en A4 horizontal y sin
+   el armazón de la aplicación (barra de navegación ni márgenes del contenedor). */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
+
+  nav {
+    display: none !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .no-imprimir {
+    display: none !important;
+  }
+
+  .hoja-certificado {
+    box-shadow: none !important;
+    border-color: #d1d5db !important;
+  }
+}

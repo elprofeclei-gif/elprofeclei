@@ -2,7 +2,25 @@
   command = "npm run build"
   publish = "dist"
 
+# SPA: cualquier ruta se resuelve en index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# ---------------------------------------------------------------------------
+# Cómo llega el frontend a la API
+#
+# La API vive en otro dominio, así que NO hay proxy aquí: el cliente usa
+# VITE_API_URL (ver packages/web/.env.example) y el backend debe permitir
+# este dominio en su variable CORS_ORIGIN.
+#
+# Si prefieres servir la API bajo el mismo dominio del sitio, activa un
+# redirect inverso en lugar de la variable (y quita VITE_API_URL):
+#
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://TU-BACKEND/:splat"
+#   status = 200
+#   force = true
+# ---------------------------------------------------------------------------

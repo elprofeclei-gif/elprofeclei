@@ -1,9 +1,27 @@
 <!DOCTYPE html>
-<html lang="es-CO">
+<html lang="es-CO" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>elprofeclei</title>
+    <meta
+      name="description"
+      content="elprofeclei: cursos virtuales, presenciales e híbridos con certificado verificable."
+    />
+    <meta name="theme-color" content="#1E1E1E" />
+    <title>elprofeclei · Plataforma de aprendizaje</title>
+    <script>
+      // Modo oscuro por defecto; si la persona eligió otro tema, se aplica antes de pintar
+      (function () {
+        try {
+          var tema = localStorage.getItem('elprofeclei-tema');
+          var raiz = document.documentElement;
+          if (tema === 'claro') raiz.classList.remove('dark');
+          else raiz.classList.add('dark');
+        } catch (e) {
+          /* navegación privada sin localStorage: se queda el modo oscuro */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

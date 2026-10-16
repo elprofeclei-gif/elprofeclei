@@ -1,69 +1,115 @@
 import { useEffect, useState } from 'react';
-import { certificatesService, type CertificateView } from '../services/certificates.service';
-import { Logo } from '../components/Logo';
+import { Link } from 'react-router-dom';
+import { certificatesService, type CertificadoEntrega } from '../services/certificates.service';
+import { Skeleton } from '../components/Skeleton';
+import { formatFecha } from '../utils/format';
+
+const DURACION: Record<string, string> = {
+  EIGHT: '8 horas',
+  TEN: '10 horas',
+  SIXTEEN: '16 horas',
+  TWENTY: '20 horas',
+};
+
+const BOTON_PRIMARIO =
+  'inline-flex h-11 items-center justify-center rounded-lg bg-blue-700 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 dark:bg-vs-blue dark:text-vs-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 dark:focus-visible:ring-vs-blue';
 
 export function CertificatesPage() {
-  const [certs, setCerts] = useState<CertificateView[]>([]);
+  const [certificados, setCertificados] = useState<CertificadoEntrega[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    certificatesService.getMine().then(setCerts).catch(console.error);
+    let vigente = true;
+
+    certificatesService
+      .getMine()
+      .then((datos) => {
+        if (vigente) setCertificados(Array.isArray(datos) ? datos : []);
+      })
+      .catch(() => {
+        if (vigente)
+          setError('No pudimos cargar tus certificados. Recarga la página para reintentar.');
+      })
+      .finally(() => {
+        if (vigente) setCargando(false);
+      });
+
+    return () => {
+      vigente = false;
+    };
   }, []);
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6 text-lms-text dark:text-lms-text-dark">
-        Mis Certificados
-      </h1>
+    <div className="flex flex-col gap-6">
+      <header className="max-w-2xl">
+        <h1 className="text-2xl font-semibold tracking-tight text-lms-text sm:text-3xl dark:text-lms-text-dark">
+          Mis certificados
+        </h1>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+          Cada certificado tiene un código público de verificación y se puede imprimir o guardar
+          como PDF.
+        </p>
+      </header>
 
-      {certs.length === 0 ? (
-        <p className="text-lms-muted">Aún no has completado ningún curso.</p>
+      {cargando ? (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <Skeleton />
+          <Skeleton />
+        </div>
+      ) : error !== '' ? (
+        <p role="alert" className="text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      ) : certificados.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-lms-border bg-white p-8 text-center dark:border-gray-600 dark:bg-lms-dark-card">
+          <p className="text-sm font-semibold text-lms-text dark:text-lms-text-dark">
+            Todavía no tienes certificados
+          </p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-lms-muted dark:text-gray-400">
+            Al completar los requisitos de una cohorte (asistencia, entregas y nota media), tu
+            instructor podrá emitir tu certificado.
+          </p>
+          <Link to="/campus" className={`${BOTON_PRIMARIO} mt-5`}>
+            Ver mi avance
+          </Link>
+        </div>
       ) : (
-        <div className="space-y-6">
-          {certs.map((c) => (
-            <div
-              key={c.id}
-              className="bg-white dark:bg-lms-dark-card p-8 rounded-2xl border-2 border-vs-blue/30 shadow-lg"
-            >
-              <div className="flex justify-between items-center mb-6">
-                <Logo />
-                <div className="text-right">
-                  <p className="text-xs text-lms-muted">Código de Verificación</p>
-                  <p className="font-mono font-bold text-vs-blue">{c.verificationCode}</p>
-                </div>
-              </div>
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          {certificados.map((certificado) => {
+            const curso = certificado.enrollment.cohort.course;
 
-              <div className="text-center py-8 border-y border-lms-border dark:border-gray-700">
-                <p className="text-sm text-lms-muted uppercase tracking-wider mb-2">
-                  Certifica que
-                </p>
-                <h2 className="text-3xl font-bold text-lms-text dark:text-lms-text-dark mb-4">
-                  {c.enrollment.user.firstName} {c.enrollment.user.lastName}
-                </h2>
-                <p className="text-lms-muted mb-2">ha completado satisfactoriamente el curso</p>
-                <h3 className="text-xl font-bold text-vs-blue">
-                  {c.enrollment.cohort.course.title}
-                </h3>
-                <p className="text-sm text-lms-muted mt-2">
-                  Duración: {c.enrollment.cohort.course.duration} horas
-                </p>
-              </div>
-
-              <div className="flex justify-between items-center mt-6">
+            return (
+              <article
+                key={certificado.id}
+                className="flex flex-col justify-between rounded-xl border border-lms-border bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-lms-dark-card"
+              >
                 <div>
-                  <p className="text-xs text-lms-muted">Fecha de emisión</p>
-                  <p className="font-semibold text-lms-text dark:text-lms-text-dark">
-                    {new Date(c.issuedAt).toLocaleDateString('es-CO')}
+                  <p className="text-xs font-semibold tracking-[0.15em] text-gray-500 uppercase dark:text-gray-400">
+                    Certificado
+                  </p>
+                  <h2 className="mt-2 text-base font-semibold text-lms-text dark:text-lms-text-dark">
+                    {curso.title}
+                  </h2>
+                  <p className="mt-1 text-xs text-lms-muted dark:text-gray-400">
+                    {certificado.enrollment.cohort.name} ·{' '}
+                    {DURACION[curso.duration] ?? curso.duration} · emitido el{' '}
+                    {formatFecha(certificado.issuedAt)}
+                  </p>
+                  <p className="mt-3 font-code text-sm font-semibold text-blue-700 dark:text-vs-blue">
+                    {certificado.verificationCode}
                   </p>
                 </div>
-                <button
-                  onClick={() => window.print()}
-                  className="bg-vs-blue text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 transition-colors print:hidden"
+
+                <Link
+                  to={`/certificados/${certificado.verificationCode}`}
+                  className={`${BOTON_PRIMARIO} mt-4`}
                 >
-                  Descargar / Imprimir
-                </button>
-              </div>
-            </div>
-          ))}
+                  Ver e imprimir
+                </Link>
+              </article>
+            );
+          })}
         </div>
       )}
     </div>
