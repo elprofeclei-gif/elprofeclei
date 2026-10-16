@@ -1,0 +1,14 @@
+# Normaliza los finales de línea del repositorio y evita el conflicto CRLF/LF
+* text=auto
+
+# Archivos que deben conservar sus bytes
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.pdf binary
+
+# Scripts, workflows y configuración se guardan siempre con LF
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  calidad:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: elprofeclei_test
+        ports:
+          - '5432:5432'
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/elprofeclei_test?schema=public
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Las claves de firma se generan en cada ejecución: no hay credenciales en el repositorio
+      - name: Generar claves de firma para las pruebas
+        run: |
+          printf 'JWT_ACCESS_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          printf 'JWT_REFRESH_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Preparar base de datos
+        run: |
+          npx prisma generate --schema packages/api/prisma/schema.prisma
+          npx prisma migrate deploy --schema packages/api/prisma/schema.prisma
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: |
+          npx tsc --noEmit -p packages/api/tsconfig.json
+          npx tsc --noEmit -p packages/web/tsconfig.json
+
+      - name: Pruebas de la API
+        run: npm test --workspace @elprofeclei/api
+
+      - name: Build de la web
+        run: npm run build --workspace @elprofeclei/web
