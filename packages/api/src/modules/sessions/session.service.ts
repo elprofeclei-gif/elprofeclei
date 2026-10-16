@@ -1,12 +1,16 @@
-import { PrismaClient, SessionType } from '@prisma/client';
+import { prisma } from '@/config/prisma';
 import { sessionSchema } from '@elprofeclei/shared';
+import { assertCohortAccess, assertSessionAccess, requireUser } from '@/utils/access';
+import type { SessionType } from '@prisma/client';
 import type { Request } from 'express';
 
-const prisma = new PrismaClient();
-
 export const sessionService = {
+  // Crear sesión - solo el instructor dueño del curso de la cohorte (o ADMIN)
   async create(req: Request) {
     const validated = sessionSchema.parse(req.body);
+    const user = requireUser(req);
+
+    await assertCohortAccess(validated.cohortId, user);
 
     return prisma.session.create({
       data: {
@@ -20,13 +24,14 @@ export const sessionService = {
       },
     });
   },
+
   // Listar sesiones del instructor o admin
   async getMySessions(req: Request) {
-    const userId = req.user!.id;
-    const role = req.user!.role;
+    const user = requireUser(req);
 
     // Si es admin, ve todas. Si es instructor, solo las de sus cursos
-    const whereClause = role === 'ADMIN' ? {} : { cohort: { course: { instructorId: userId } } };
+    const whereClause =
+      user.role === 'ADMIN' ? {} : { cohort: { course: { instructorId: user.id } } };
 
     return prisma.session.findMany({
       where: whereClause,
@@ -37,12 +42,14 @@ export const sessionService = {
 
   // Listar sesiones de una cohorte
   async getByCohort(cohortId: string) {
-    return prisma.session.findMany({ where: { cohortId } });
+    return prisma.session.findMany({ where: { cohortId }, orderBy: { startTime: 'asc' } });
   },
 
-  // Actualizar sesión
+  // Actualizar sesión - solo el instructor dueño (o ADMIN)
   async update(req: Request) {
-    const { id } = req.params;
+    const user = requireUser(req);
+    await assertSessionAccess(req.params.id, user);
+
     const { title, type, videoUrl, venueId, startTime, endTime } = req.body;
 
     const dataToUpdate: {
@@ -62,14 +69,16 @@ export const sessionService = {
     if (endTime) dataToUpdate.endTime = new Date(endTime);
 
     return prisma.session.update({
-      where: { id },
+      where: { id: req.params.id },
       data: dataToUpdate,
     });
   },
 
-  // Eliminar sesión
+  // Eliminar sesión - solo el instructor dueño (o ADMIN)
   async delete(req: Request) {
-    const { id } = req.params;
-    return prisma.session.delete({ where: { id } });
+    const user = requireUser(req);
+    await assertSessionAccess(req.params.id, user);
+
+    return prisma.session.delete({ where: { id: req.params.id } });
   },
 };

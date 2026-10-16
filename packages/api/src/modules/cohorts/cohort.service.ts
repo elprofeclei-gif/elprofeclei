@@ -1,17 +1,21 @@
-import { PrismaClient, CohortApprovalMode } from '@prisma/client';
+import { prisma } from '@/config/prisma';
 import { cohortSchema } from '@elprofeclei/shared';
+import { assertCohortAccess, assertCourseAccess, requireUser } from '@/utils/access';
+import type { CohortApprovalMode } from '@prisma/client';
 import type { Request } from 'express';
 
-const prisma = new PrismaClient();
-
 export const cohortService = {
-  // Crear cohorte
+  // Crear cohorte - solo el instructor dueño del curso (o ADMIN)
   async create(req: Request) {
     const validated = cohortSchema.parse(req.body);
+    const user = requireUser(req);
+
+    await assertCourseAccess(validated.courseId, user);
+
     return prisma.cohort.create({
       data: {
         courseId: validated.courseId,
-        name: validated.name, // <--- ESTA LÍNEA ES LA QUE FALTABA
+        name: validated.name,
         startDate: new Date(validated.startDate),
         endDate: new Date(validated.endDate),
         capacity: validated.capacity,
@@ -23,7 +27,6 @@ export const cohortService = {
   async getByCourse(courseId: string) {
     return prisma.cohort.findMany({
       where: { courseId, deletedAt: null },
-      // Incluimos las sesiones ordenadas por fecha de inicio
       include: {
         sessions: {
           orderBy: { startTime: 'asc' },
@@ -32,9 +35,11 @@ export const cohortService = {
     });
   },
 
-  // Actualizar cohorte
+  // Actualizar cohorte - solo el instructor dueño (o ADMIN)
   async update(req: Request) {
-    const { id } = req.params;
+    const user = requireUser(req);
+    await assertCohortAccess(req.params.id, user);
+
     const { name, startDate, endDate, capacity, approvalMode } = req.body;
 
     const dataToUpdate: {
@@ -44,27 +49,29 @@ export const cohortService = {
       capacity?: number;
       approvalMode?: CohortApprovalMode;
     } = {};
-    if (name !== undefined) dataToUpdate.name = name; // NUEVO
+    if (name !== undefined) dataToUpdate.name = name;
     if (startDate) dataToUpdate.startDate = new Date(startDate);
     if (endDate) dataToUpdate.endDate = new Date(endDate);
     if (capacity !== undefined) dataToUpdate.capacity = Number(capacity);
     if (approvalMode) dataToUpdate.approvalMode = approvalMode as CohortApprovalMode;
 
     return prisma.cohort.update({
-      where: { id },
+      where: { id: req.params.id },
       data: dataToUpdate,
     });
   },
 
-  // Eliminar (lógico) cohorte y sus sesiones en cascada
+  // Eliminar (lógico) cohorte y sus sesiones en cascada - solo el dueño (o ADMIN)
   async delete(req: Request) {
+    const user = requireUser(req);
+    await assertCohortAccess(req.params.id, user);
+
     const { id } = req.params;
 
-    // Usamos transacción para asegurar que se borren las sesiones Y se oculte la cohorte
     return prisma.$transaction([
-      // 1. Eliminar todas las sesiones asociadas a esta cohorte (Hard delete)
+      // 1. Las sesiones se eliminan físicamente (no tienen borrado lógico)
       prisma.session.deleteMany({ where: { cohortId: id } }),
-      // 2. Ocultar la cohorte (Soft delete)
+      // 2. La cohorte se oculta (soft delete)
       prisma.cohort.update({
         where: { id },
         data: { deletedAt: new Date() },

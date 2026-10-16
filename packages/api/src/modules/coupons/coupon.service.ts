@@ -1,9 +1,14 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/config/prisma';
 import { AppError } from '@/utils/AppError';
 import { couponSchema } from '@elprofeclei/shared';
+import { assertCouponActive, assertCouponUsable } from '@/utils/coupons';
+import { requireUser } from '@/utils/access';
+import { z } from 'zod';
 import type { Request } from 'express';
 
-const prisma = new PrismaClient();
+const couponCodeSchema = z.object({
+  code: z.string().min(1, 'El código del cupón es obligatorio'),
+});
 
 export const couponService = {
   // Crear cupón o beca (Admin)
@@ -21,42 +26,45 @@ export const couponService = {
 
   // Listar todos (Admin)
   async getAll() {
-    return prisma.coupon.findMany();
+    return prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } });
   },
 
-  // Validar cupón (Estudiante)
+  // Validar cupón (Estudiante): devuelve solo lo necesario para la compra
   async validate(req: Request) {
-    const { code } = req.body;
-    const userId = req.user!.id;
+    const { code } = couponCodeSchema.parse(req.body);
+    const user = requireUser(req);
 
     const coupon = await prisma.coupon.findUnique({ where: { code: code.toUpperCase() } });
-    if (!coupon) throw new AppError('Cupón inválido', 404);
+    const usable = assertCouponUsable(coupon, user.id);
 
-    const now = new Date();
-    if (now < coupon.validFrom || now > coupon.validUntil) {
-      throw new AppError('El cupón está fuera de su vigencia', 400);
-    }
-    if (coupon.usedCount >= coupon.maxUses) {
-      throw new AppError('El cupón ha alcanzado su límite de usos', 400);
-    }
-    if (coupon.assignedToId && coupon.assignedToId !== userId) {
-      throw new AppError('Este cupón no está asignado a tu cuenta', 403);
-    }
-
-    return { valid: true, coupon };
+    return {
+      valid: true,
+      coupon: {
+        code: usable.code,
+        discountType: usable.discountType,
+        discountValue: Number(usable.discountValue),
+        validUntil: usable.validUntil,
+      },
+    };
   },
 
-  // Aplicar cupón (marcar como usado)
+  // Canjear cupón: solo ADMIN (ajuste manual).
+  // En las matrículas el uso lo descuenta enrollment.service dentro de su transacción.
   async redeem(req: Request) {
-    const { code } = req.body;
+    const { code } = couponCodeSchema.parse(req.body);
 
     const coupon = await prisma.coupon.findUnique({ where: { code: code.toUpperCase() } });
-    if (!coupon) throw new AppError('Cupón inválido', 404);
+    const active = assertCouponActive(coupon);
 
-    // Incrementar el contador de usos
-    return prisma.coupon.update({
-      where: { id: coupon.id },
+    // Incremento condicional: evita superar el límite con canjes simultáneos
+    const updated = await prisma.coupon.updateMany({
+      where: { id: active.id, usedCount: { lt: active.maxUses } },
       data: { usedCount: { increment: 1 } },
     });
+    if (updated.count === 0) {
+      throw new AppError('El cupón alcanzó su límite de usos', 400);
+    }
+
+    return { message: 'Cupón canjeado', code: active.code, usedCount: active.usedCount + 1 };
   },
 };

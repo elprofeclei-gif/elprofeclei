@@ -1,68 +1,74 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/config/prisma';
 import { AppError } from '@/utils/AppError';
 import jwt from 'jsonwebtoken';
 import { env } from '@/config/env';
+import { assertSessionAccess, requireUser } from '@/utils/access';
 import type { Request } from 'express';
 
-const prisma = new PrismaClient();
+// Los QR de asistencia usan su propio secreto si está definido, para no
+// compartir el mismo material de firma que los tokens de sesión.
+const qrSigningKey = env.QR_TOKEN_SECRET ?? env.JWT_ACCESS_SECRET;
+const QR_PURPOSE = 'attendance-qr';
 
 export const attendanceService = {
-  // Generar token QR (Instructor)
+  // Generar token QR (Instructor dueño o ADMIN)
   async generateQrToken(req: Request) {
     const { sessionId } = req.params;
-    const userId = req.user!.id;
+    const user = requireUser(req);
 
-    // Verificar que la sesión exista y el usuario sea instructor/admin de la cohorte
-    const session = await prisma.session.findUnique({
-      where: { id: sessionId },
-      include: { cohort: { include: { course: true } } },
+    await assertSessionAccess(sessionId, user);
+
+    // Vigencia corta: el instructor lo regenera cuando expira
+    const signed = jwt.sign({ sessionId, purpose: QR_PURPOSE }, qrSigningKey, {
+      expiresIn: '5m',
     });
-    if (!session) throw new AppError('Sesión no encontrada', 404);
-    if (session.cohort.course.instructorId !== userId && req.user!.role !== 'ADMIN') {
-      throw new AppError('No tienes permiso sobre esta sesión', 403);
-    }
 
-    // Generar token JWT con vigencia de 5 minutos
-    const token = jwt.sign({ sessionId }, env.JWT_ACCESS_SECRET, { expiresIn: '5m' });
-    return { token, expiresIn: 300 }; // 300 segundos
+    return { code: signed, expiresIn: 300 }; // 300 segundos
   },
 
   // Registrar asistencia (Estudiante)
   async registerAttendance(req: Request) {
-    const { token } = req.body;
-    const userId = req.user!.id;
+    const user = requireUser(req);
 
-    // Verificar token
-    let decoded: { sessionId: string };
+    const scanned = String(req.body?.token ?? '');
+    if (!scanned) throw new AppError('Código de asistencia requerido', 400);
+
+    // Verificar firma, caducidad y que el código sea realmente un QR de asistencia
+    let decoded: { sessionId?: string; purpose?: string };
     try {
-      decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as { sessionId: string };
-    } catch (err) {
+      decoded = jwt.verify(scanned, qrSigningKey) as { sessionId?: string; purpose?: string };
+    } catch {
       throw new AppError('Token inválido o expirado. Pide al instructor que regenere el QR.', 401);
     }
 
-    const { sessionId } = decoded;
+    if (decoded.purpose !== QR_PURPOSE || !decoded.sessionId) {
+      throw new AppError('El código no corresponde a un QR de asistencia válido', 400);
+    }
 
-    // Verificar que el estudiante esté matriculado y activo en la cohorte
+    const sessionId = decoded.sessionId;
+
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
       include: { cohort: { include: { enrollments: true } } },
     });
     if (!session) throw new AppError('La sesión no existe', 404);
 
+    // Solo matrículas activas: antes bastaba una matrícula pendiente de pago
     const isEnrolled = session.cohort.enrollments.some(
-      (e) => e.userId === userId && (e.status === 'ACTIVE' || e.status === 'PENDING_APPROVAL'),
+      (enrollment) =>
+        enrollment.userId === user.id &&
+        enrollment.status === 'ACTIVE' &&
+        enrollment.deletedAt === null,
     );
-    if (!isEnrolled) throw new AppError('No estás matriculado en esta cohorte', 403);
+    if (!isEnrolled) throw new AppError('No tienes una matrícula activa en esta cohorte', 403);
 
-    // Verificar si ya registró asistencia
     const existing = await prisma.attendance.findUnique({
-      where: { sessionId_userId: { sessionId, userId } },
+      where: { sessionId_userId: { sessionId, userId: user.id } },
     });
     if (existing) throw new AppError('Ya registraste asistencia para esta sesión', 409);
 
-    // Registrar asistencia
     return prisma.attendance.create({
-      data: { sessionId, userId, attended: true },
+      data: { sessionId, userId: user.id, attended: true },
     });
   },
 };

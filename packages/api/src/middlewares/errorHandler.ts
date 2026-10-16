@@ -13,23 +13,57 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     });
   }
 
-  // Capturar errores de validación de Zod y devolverlos como 400
+  // Validación de Zod: mensaje legible + detalle por campo para el formulario
   if (err instanceof ZodError) {
-    const message = err.errors.map((e) => e.message).join(', ');
     return res.status(400).json({
       status: 'error',
-      message: message,
+      message: err.errors.map((issue) => issue.message).join(', '),
+      errors: err.flatten().fieldErrors,
     });
   }
 
-  // Capturar errores comunes de Prisma (ej. llave foránea inexistente)
+  // Errores conocidos de Prisma que hoy se convertían en 500 genéricos
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2002') {
+      const target =
+        err.meta && Array.isArray(err.meta.target)
+          ? (err.meta.target as string[]).join(', ')
+          : 'valor único';
+      return res.status(409).json({
+        status: 'error',
+        message: `Ya existe un registro con ese valor (${target}).`,
+      });
+    }
+
+    if (err.code === 'P2025') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'El registro solicitado no existe.',
+      });
+    }
+
     if (err.code === 'P2003') {
       return res.status(400).json({
         status: 'error',
-        message: 'ID de referencia inválido (verifica que el Cohort ID exista).',
+        message: 'ID de referencia inválido (verifica que el registro relacionado exista).',
       });
     }
+
+    // Conflicto de escritura de una transacción serializable
+    if (err.code === 'P2034') {
+      return res.status(409).json({
+        status: 'error',
+        message: 'No se pudo completar la operación por un conflicto simultáneo. Intenta de nuevo.',
+      });
+    }
+  }
+
+  // Parámetros inválidos para Prisma (ej. un id que no es UUID)
+  if (err instanceof Prisma.PrismaClientValidationError) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Datos o parámetros inválidos para la operación.',
+    });
   }
 
   logger.error({ err }, 'Error no controlado');

@@ -13,4 +13,7 @@ router.use(authMiddleware); // Las siguientes requieren login
 router.post('/issue', roleMiddleware(['INSTRUCTOR', 'ADMIN']), certificateController.issue);
 router.get('/mine', certificateController.getMine);
 
+// Certificado propio por código, para la vista imprimible
+router.get('/mine/:code', certificateController.getMioPorCodigo);
+
 export default router;

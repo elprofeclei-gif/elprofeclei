@@ -11,6 +11,10 @@ export const certificateController = {
     const data = await certificateService.getMine(req);
     res.status(200).json(data);
   }),
+  getMioPorCodigo: asyncHandler(async (req: Request, res: Response) => {
+    const data = await certificateService.getMioPorCodigo(req);
+    res.status(200).json(data);
+  }),
   verify: asyncHandler(async (req: Request, res: Response) => {
     const data = await certificateService.verify(req.params.code);
     res.status(200).json(data);

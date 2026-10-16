@@ -44,11 +44,24 @@ enum SessionType {
 }
 
 enum EnrollmentStatus {
+  PENDING_PAYMENT
   PENDING_APPROVAL
   ACTIVE
   REJECTED
   CANCELLED
   COMPLETED
+}
+
+enum PaymentMethod {
+  ONLINE
+  NEQUI
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
 }
 
 enum AssessmentType {
@@ -81,11 +94,12 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  coursesAsInstructor Course[]
-  enrollments         Enrollment[]
-  attendances         Attendance[]
-  scholarships        Coupon[]
-  submissions      Submission[]
+  coursesAsInstructor  Course[]
+  enrollments          Enrollment[]
+  attendances          Attendance[]
+  scholarships         Coupon[]
+  submissions          Submission[]
+  confirmedPayments    Payment[] @relation("PaymentConfirmer")
 }
 
 model Venue {
@@ -162,8 +176,31 @@ model Enrollment {
   user         User          @relation(fields: [userId], references: [id])
   cohort       Cohort        @relation(fields: [cohortId], references: [id])
   certificates Certificate[]
+  payment      Payment?
 
   @@unique([userId, cohortId]) // Evitar doble matrícula
+}
+
+// Pago asociado a una matrícula de curso de pago (1:1).
+// Mientras no exista pasarela, el instructor/admin confirma manualmente;
+// el modelo queda listo para que un webhook la confirme en el futuro.
+model Payment {
+  id            String        @id @default(uuid())
+  enrollmentId  String        @unique
+  baseAmount    Decimal       @db.Decimal(10, 2) // Precio del curso al momento de matricularse
+  amount        Decimal       @db.Decimal(10, 2) // Total a pagar tras aplicar el cupón
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  reference     String        @unique // Código corto que el estudiante usa como comprobante
+  couponId      String?
+  confirmedById String? // Usuario (instructor/admin) que confirmó el pago
+  confirmedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  enrollment  Enrollment @relation(fields: [enrollmentId], references: [id])
+  coupon      Coupon?    @relation(fields: [couponId], references: [id])
+  confirmedBy User?      @relation("PaymentConfirmer", fields: [confirmedById], references: [id])
 }
 
 model Attendance {
@@ -214,7 +251,8 @@ model Coupon {
   assignedToId  String? // Para becas 100% específicas
   createdAt     DateTime     @default(now())
 
-  assignedTo User? @relation(fields: [assignedToId], references: [id])
+  assignedTo User?     @relation(fields: [assignedToId], references: [id])
+  payments   Payment[]
 }
 
 model Submission {

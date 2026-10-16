@@ -8,13 +8,23 @@ export const courseController = {
     res.status(201).json(data);
   }),
 
-  getPublished: asyncHandler(async (_req: Request, res: Response) => {
-    const data = await courseService.getPublished();
-    res.status(200).json(data);
+  getPublished: asyncHandler(async (req: Request, res: Response) => {
+    const { courses, total, page, pageSize } = await courseService.getPublished(req);
+    // Paginación en cabeceras (expuestas por el CORS de app.ts); el cuerpo sigue
+    // siendo un array porque así lo consume la web
+    res.set('X-Total-Count', String(total));
+    res.set('X-Page', String(page));
+    res.set('X-Page-Size', String(pageSize));
+    res.status(200).json(courses);
   }),
 
   getMyCourses: asyncHandler(async (req: Request, res: Response) => {
     const data = await courseService.getMyCourses(req);
+    res.status(200).json(data);
+  }),
+
+  getById: asyncHandler(async (req: Request, res: Response) => {
+    const data = await courseService.getById(req);
     res.status(200).json(data);
   }),
 
