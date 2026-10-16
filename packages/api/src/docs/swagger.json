@@ -1,0 +1,27 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "elprofeclei API",
+    "version": "1.0.0",
+    "description": "API para la plataforma de aprendizaje en línea elprofeclei"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Servidor de desarrollo"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Verifica el estado del servidor",
+        "responses": {
+          "200": {
+            "description": "Servidor funcionando correctamente"
+          }
+        }
+      }
+    }
+  }
+}

@@ -17,6 +17,8 @@ import attendanceRouter from '@/modules/attendance/attendance.routes';
 import assessmentRouter from '@/modules/assessments/assessment.routes';
 import certificateRouter from '@/modules/certificates/certificate.routes';
 import couponRouter from '@/modules/coupons/coupon.routes';
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpecs from './docs/swagger.json';
 
 const app = express();
 
@@ -38,6 +40,7 @@ app.use('/api/attendance', attendanceRouter);
 app.use('/api/assessments', assessmentRouter);
 app.use('/api/certificates', certificateRouter);
 app.use('/api/coupons', couponRouter);
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 
 app.use(errorHandler);
 
