@@ -6,7 +6,7 @@ export const registerSchema = z.object({
   lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres'),
   email: z.string().email('Correo electrónico inválido'),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
-  consent: z.boolean().refine(val => val === true, {
+  consent: z.boolean().refine((val) => val === true, {
     message: 'Debes aceptar la política de tratamiento de datos (Ley 1581)',
   }),
 });
