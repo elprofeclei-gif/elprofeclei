@@ -12,6 +12,9 @@ import {
   type PreguntaQuizInput,
 } from '@elprofeclei/shared';
 import { assertAssessmentAccess, assertCohortAccess, requireUser } from '@/utils/access';
+import { registrarAuditoria } from '@/utils/audit';
+import { enviarCorreoSeguro, plantillaNotaPublicada } from '@/utils/mailer';
+import { env } from '@/config/env';
 import type { Request } from 'express';
 
 interface ResultadoQuiz {
@@ -301,10 +304,51 @@ export const assessmentService = {
       throw new AppError(`La nota no puede superar la nota máxima (${maxScore})`, 400);
     }
 
-    return prisma.submission.update({
+    const actualizada = await prisma.submission.update({
       where: { id: submission.id },
       data: { score, feedback, status: 'GRADED' },
     });
+
+    registrarAuditoria({
+      actorId: user.id,
+      accion: 'ENTREGA_CALIFICADA',
+      entidad: 'Submission',
+      entidadId: actualizada.id,
+      detalle: { assessmentId: submission.assessmentId, nota: score, maximo: maxScore },
+    });
+
+    // Aviso al estudiante con su nota (si el correo falla, la nota ya quedó guardada)
+    const aviso = await prisma.submission.findUnique({
+      where: { id: actualizada.id },
+      select: {
+        user: { select: { email: true, firstName: true } },
+        assessment: {
+          select: {
+            title: true,
+            cohort: { select: { course: { select: { title: true } } } },
+          },
+        },
+      },
+    });
+
+    if (aviso) {
+      const base = env.FRONTEND_URL ?? 'http://localhost:5173';
+
+      await enviarCorreoSeguro({
+        para: aviso.user.email,
+        ...plantillaNotaPublicada({
+          nombre: aviso.user.firstName,
+          evaluacion: aviso.assessment.title,
+          curso: aviso.assessment.cohort.course.title,
+          nota: String(score),
+          maximo: String(maxScore),
+          retroalimentacion: feedback,
+          url: `${base}/evaluaciones`,
+        }),
+      });
+    }
+
+    return actualizada;
   },
 
   // Listar entregas de una evaluación - solo el dueño del curso (o ADMIN)

@@ -1,6 +1,7 @@
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/utils/AppError';
 import { requireUser } from '@/utils/access';
+import { registrarAuditoria } from '@/utils/audit';
 import { z } from 'zod';
 import type { Request } from 'express';
 
@@ -90,10 +91,20 @@ export const usersService = {
     });
     if (!objetivo) throw new AppError('Usuario no encontrado', 404);
 
-    return prisma.user.update({
+    const actualizado = await prisma.user.update({
       where: { id },
       data: { role: rol },
       select: { id: true, email: true, firstName: true, lastName: true, role: true },
     });
+
+    registrarAuditoria({
+      actorId: user.id,
+      accion: 'ROL_CAMBIADO',
+      entidad: 'User',
+      entidadId: id,
+      detalle: { rolAnterior: objetivo.role, rolNuevo: rol },
+    });
+
+    return actualizado;
   },
 };

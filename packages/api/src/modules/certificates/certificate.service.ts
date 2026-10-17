@@ -4,6 +4,9 @@ import { AppError } from '@/utils/AppError';
 import { randomUUID } from 'crypto';
 import { assertCourseAccess, requireUser } from '@/utils/access';
 import { progresoDeEstudiante } from '../progress/progress.service';
+import { registrarAuditoria } from '@/utils/audit';
+import { enviarCorreoSeguro, plantillaCertificadoEmitido } from '@/utils/mailer';
+import { env } from '@/config/env';
 import type { Request } from 'express';
 
 // Datos que necesita la vista imprimible: estudiante, curso, cohorte, instructor
@@ -78,8 +81,8 @@ export const certificateService = {
       .substring(0, 10)
       .toUpperCase();
 
-    return prisma.$transaction(async (tx) => {
-      const certificado = await tx.certificate.create({
+    const certificado = await prisma.$transaction(async (tx) => {
+      const creado = await tx.certificate.create({
         data: { enrollmentId, verificationCode },
         include: certificadoInclude,
       });
@@ -90,8 +93,32 @@ export const certificateService = {
         data: { status: 'COMPLETED' },
       });
 
-      return certificado;
+      return creado;
     });
+
+    registrarAuditoria({
+      actorId: user.id,
+      accion: 'CERTIFICADO_EMITIDO',
+      entidad: 'Certificate',
+      entidadId: certificado.id,
+      detalle: { enrollmentId, codigo: verificationCode, forzado: puedeForzar },
+    });
+
+    // Aviso al estudiante (si el correo falla, el certificado ya está emitido)
+    const alumno = certificado.enrollment.user;
+    const base = env.FRONTEND_URL ?? 'http://localhost:5173';
+
+    await enviarCorreoSeguro({
+      para: alumno.email,
+      ...plantillaCertificadoEmitido({
+        nombre: alumno.firstName,
+        curso: certificado.enrollment.cohort.course.title,
+        codigo: verificationCode,
+        url: `${base}/certificados/${verificationCode}`,
+      }),
+    });
+
+    return certificado;
   },
 
   // Obtener mis certificados (Estudiante)

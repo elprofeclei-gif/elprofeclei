@@ -5,6 +5,9 @@ import { prisma } from '@/config/prisma';
 import { enrollmentSchema } from '@elprofeclei/shared';
 import { assertCouponUsable, calculateDiscountedAmount } from '@/utils/coupons';
 import { assertCohortAccess, requireUser } from '@/utils/access';
+import { registrarAuditoria } from '@/utils/audit';
+import { enviarCorreoSeguro, plantillaPagoConfirmado } from '@/utils/mailer';
+import { env } from '@/config/env';
 import type { Request } from 'express';
 
 // Include estándar para devolver la matrícula con su pago y cohorte
@@ -288,6 +291,7 @@ export const enrollmentService = {
       where: { id },
       include: {
         payment: true,
+        user: { select: { email: true, firstName: true } },
         cohort: { include: { course: true } },
       },
     });
@@ -303,7 +307,7 @@ export const enrollmentService = {
 
     const nextStatus = enrollment.cohort.approvalMode === 'AUTO' ? 'ACTIVE' : 'PENDING_APPROVAL';
 
-    return prisma.$transaction(async (tx) => {
+    const actualizada = await prisma.$transaction(async (tx) => {
       await tx.payment.update({
         where: { id: enrollment.payment!.id },
         data: {
@@ -319,6 +323,29 @@ export const enrollmentService = {
         include: enrollmentInclude,
       });
     });
+
+    // Rastro de auditoría y aviso al estudiante (si el correo falla, el pago ya quedó confirmado)
+    registrarAuditoria({
+      actorId: req.user!.id,
+      accion: 'PAGO_CONFIRMADO',
+      entidad: 'Enrollment',
+      entidadId: id,
+      detalle: { estado: nextStatus, referencia: enrollment.payment?.reference ?? null },
+    });
+
+    const base = env.FRONTEND_URL ?? 'http://localhost:5173';
+    await enviarCorreoSeguro({
+      para: enrollment.user.email,
+      ...plantillaPagoConfirmado({
+        nombre: enrollment.user.firstName,
+        curso: enrollment.cohort.course.title,
+        cohorte: enrollment.cohort.name,
+        estado: nextStatus === 'ACTIVE' ? 'activa' : 'pendiente de aprobación',
+        url: `${base}/campus`,
+      }),
+    });
+
+    return actualizada;
   },
 
   // Cancelar la propia matrícula (Estudiante): libera cupo y uso del cupón

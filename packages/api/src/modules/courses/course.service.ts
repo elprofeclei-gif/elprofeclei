@@ -4,6 +4,7 @@ import { AppError } from '@/utils/AppError';
 import { courseSchema, courseQuerySchema } from '@elprofeclei/shared';
 import type { CourseStatsView } from '@elprofeclei/shared';
 import { assertCourseAccess, requireUser } from '@/utils/access';
+import { registrarAuditoria } from '@/utils/audit';
 import type { Request } from 'express';
 
 // Estados de matrícula que ocupan cupo a efectos del catálogo
@@ -173,10 +174,20 @@ export const courseService = {
     if (!course) throw new AppError('Curso no encontrado', 404);
     if (course.status !== 'PENDING_REVIEW') throw new AppError('El curso no está en revisión', 400);
 
-    return prisma.course.update({
+    const cursoPublicado = await prisma.course.update({
       where: { id: course.id },
       data: { status: 'PUBLISHED' },
     });
+
+    registrarAuditoria({
+      actorId: requireUser(req).id,
+      accion: 'CURSO_APROBADO',
+      entidad: 'Course',
+      entidadId: course.id,
+      detalle: { titulo: course.title, instructorId: course.instructorId },
+    });
+
+    return cursoPublicado;
   },
 
   // Actualizar curso: solo el dueño (o ADMIN) y solo campos editables.
